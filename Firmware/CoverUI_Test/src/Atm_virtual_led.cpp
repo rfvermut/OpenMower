@@ -70,7 +70,7 @@ void Atm_virtual_led::action( int id ) {
       return;
     case ENT_ON:
       if ( on_timer.value > 0 ) { // Never turn if on_timer is zero (duty cycle 0 must be dark)
-          oneventon.push( 0 );
+          oneventon.push( 1 );
       }
       return;
     case ENT_OFF:

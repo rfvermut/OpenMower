@@ -32,54 +32,84 @@ ShiftRegister shiftRegister = ShiftRegister(
         no_pin,
         PIN_G
 );
+
 std::bitset<18> LEDS;
 
 Atm_led builtin_led;
 Atm_button_matrix SW[14];
 Atm_virtual_led leds[18];
 
+// Maps led index to its actual position in chain of shift registers. First bit is furthest in chain
+// i.e. Led D0102 is second. It's index is 1, counting from 0
+// It mapped to 12th in bit chain from the end (counting from 0)
+constexpr byte LED_INDEX_TO_BIT_POSITION[] = {1, 12, 11, 10, 0, 13, 14, 5, 4,
+                                              3, 2, 15, 16, 17, 6, 7, 8, 9};
+
+void virtualLedCallback(int idx, int isPressed, int _ignored) {
+    LEDS.set(LED_INDEX_TO_BIT_POSITION[idx], isPressed);
+    shiftRegister.write(LEDS.to_ulong(), LEDS.size());
+
+#ifdef DEBUG
+    Serial.print("LED ");
+    Serial.print(idx);
+    Serial.print("\t");
+    Serial.println(LEDS.to_ulong(), BIN);
+#endif
+};
 
 void setup() {
     LEDS.reset();
     shiftRegister.write(LEDS.to_ulong(), LEDS.size());
-    SW[0].begin(BM_OUT_SA1, BM_IN_SE1);
-    SW[1].begin(BM_OUT_SA1, BM_IN_SE2);
-    SW[2].begin(BM_OUT_SA1, BM_IN_SE3);
-    SW[3].begin(BM_OUT_SA1, BM_IN_SE4);
-    SW[4].begin(BM_OUT_SA2, BM_IN_SE1);
-    SW[5].begin(BM_OUT_SA2, BM_IN_SE2);
-    SW[6].begin(BM_OUT_SA2, BM_IN_SE3);
-    SW[7].begin(BM_OUT_SA2, BM_IN_SE4);
-    SW[8].begin(BM_OUT_SA3, BM_IN_SE1);
-    SW[9].begin(BM_OUT_SA3, BM_IN_SE2);
-    SW[10].begin(BM_OUT_SA3, BM_IN_SE3);
-    SW[11].begin(BM_OUT_SA3, BM_IN_SE4);
-    SW[12].begin(BM_OUT_SA4, BM_IN_SE1);
-    SW[13].begin(BM_OUT_SA4, BM_IN_SE2);
+    SW[0].begin(BM_OUT_SA1, BM_IN_SE1).debounce(15);
+    SW[1].begin(BM_OUT_SA1, BM_IN_SE2).debounce(15);
+    SW[2].begin(BM_OUT_SA1, BM_IN_SE3).debounce(15);
+    SW[3].begin(BM_OUT_SA1, BM_IN_SE4).debounce(15);
+    SW[4].begin(BM_OUT_SA2, BM_IN_SE1).debounce(15);
+    SW[5].begin(BM_OUT_SA2, BM_IN_SE2).debounce(15);
+    SW[6].begin(BM_OUT_SA2, BM_IN_SE3).debounce(15);
+    SW[7].begin(BM_OUT_SA2, BM_IN_SE4).debounce(15);
+    SW[8].begin(BM_OUT_SA3, BM_IN_SE1).debounce(15);
+    SW[9].begin(BM_OUT_SA3, BM_IN_SE2).debounce(15);
+    SW[10].begin(BM_OUT_SA3, BM_IN_SE3).debounce(15);
+    SW[11].begin(BM_OUT_SA3, BM_IN_SE4).debounce(15);
+    SW[12].begin(BM_OUT_SA4, BM_IN_SE1).debounce(15);
+    SW[13].begin(BM_OUT_SA4, BM_IN_SE2).debounce(15);
 
     builtin_led.begin(LED_BUILTIN);
     for (int i = 0; i < 18; ++i) {
         leds[i].begin();
-        leds[i].onEventOn([](int idx, int v, int up) {
-            Serial.println(idx);
-            LEDS.set(18 - idx, true);
-            shiftRegister.write(LEDS.to_ulong(), LEDS.size());
-            Serial.println(LEDS.to_ulong());
-        }, i);
-        leds[i].onEventOff([](int idx, int v, int up) {
-            Serial.println(idx);
-            LEDS.set(18 - idx, false);
-            shiftRegister.write(LEDS.to_ulong(), LEDS.size());
-            Serial.println(LEDS.to_ulong());
-        }, i);
+
+        // Virtual led on/off codes does nothing, instead we update shift register bytes in callback
+        leds[i].onEventOn(virtualLedCallback, i);
+        leds[i].onEventOff(virtualLedCallback, i);
     }
 
-    for (int i = 0; i < 14; ++i) {
+#ifdef TEST_MODE
+    for (int i = 0; i < 18; ++i) {
+        leds[i].begin().blink(50 * (i+1), 50 * (i+1)).start();
+    };
+    for (int i = 0; i < 13; ++i) {
+        // Switches SW1-SW13 toggle corresponding leds
         SW[i].onPress([](int idx, int v, int up) {
+            Serial.print("BTN ");
+            Serial.println(idx);
             builtin_led.toggle();
             leds[idx].toggle();
-        }, i);
+        }, i).trace(Serial);
+        // Switch SW14 operates the rest of leds
+        SW[13].onPress([](int idx, int v, int up) {
+            Serial.print("BTN ");
+            Serial.println(idx);
+            builtin_led.toggle();
+            leds[13].toggle();
+            leds[14].toggle();
+            leds[15].toggle();
+            leds[16].toggle();
+            leds[17].toggle();
+        }, i).trace(Serial);
     }
+#endif
+
 }
 
 void loop() {
