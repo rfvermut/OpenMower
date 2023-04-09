@@ -37,6 +37,9 @@ class TestCoverUI:
     ZERO_BYTE = b'\x00'  # COBS 1-byte delimiter is hex zero as a (binary) bytes character
 
     PACKET_VERSION = 0xB0
+    PACKET_BUZZ = 0xB1
+    PACKET_LEDS = 0xB2
+    PACKET_BTN = 0xB3
 
     @pytest.fixture()
     def serial_comm(self):
@@ -67,3 +70,30 @@ class TestCoverUI:
 
         assert version_reply[0] == self.PACKET_VERSION
         assert version_reply[2] == 200
+
+    def test_one_long_buzz(self, serial_comm):
+        self.crc_cobs_send(serial_comm, bytearray([self.PACKET_BUZZ, 1, 255, 255]))
+
+    def test_five_short_buzz(self, serial_comm):
+        self.crc_cobs_send(serial_comm, bytearray([self.PACKET_BUZZ, 5, 100, 100]))
+
+    def test_all_leds_on(self, serial_comm):
+        self.crc_cobs_send(serial_comm, bytearray([self.PACKET_LEDS, 0xCC]) +
+                           0xFFFFFFFFFFFFFF.to_bytes(8, "little"))
+
+    def test_first_led_slow_second_fast(self, serial_comm):
+        self.crc_cobs_send(serial_comm, bytearray([self.PACKET_LEDS, 0xCC])
+                           + 0b101110.to_bytes(8, "little"))
+
+    def test_wait_for_button14_press(self, serial_comm):
+        got_button_press = False
+        for i in range(1000):
+            try:
+                button_reply = self.read_cobs_crc(serial_comm)
+                assert button_reply[0] == self.PACKET_BTN
+                assert button_reply[2] == 200
+                got_button_press = True
+            except RuntimeError:
+                pass
+
+        assert got_button_press

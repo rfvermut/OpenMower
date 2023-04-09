@@ -68,9 +68,25 @@ void virtualLedCallback(int idx, int isPressed, int _ignored) {
 #endif
 };
 
-template<size_t bitsetsize>
-void parseLedsBinaryStatus(std::bitset<bitsetsize> &ledsMessage) {
+void parseLedsBinaryStatus(std::bitset<LEDS.size() * 3> ledsMessage) {
+    for (size_t i = 0; i < LEDS.size(); ++i) {
 
+#ifdef DEBUG
+        Serial.print(i);
+        Serial.print(ledsMessage[i * 3]);
+        Serial.print(ledsMessage[i * 3 + 1]);
+        Serial.println(ledsMessage[i * 3 + 2]);
+#endif
+        if (ledsMessage[i * 3 + 2] == 0) {
+            leds[i].off();
+        } else if (ledsMessage[i * 3 + 1] == 0) {
+            leds[i].blink(200, 1000).start();        // Slow
+        } else if (ledsMessage[i * 3] == 0) {
+            leds[i].blink(200, 200).start();        // Fast
+        } else {
+            leds[i].on();
+        }
+    }
 }
 
 
@@ -100,6 +116,27 @@ void sendMessage(uint8_t *message, size_t size) {
     myPacketSerial.send(message, size);
 }
 
+void reportButtonPress(int idx, int isShortPress) {
+    // Mild debug to show that we sense button presses
+    builtin_led.toggle();
+
+    struct msg_event_button reply{};
+    reply.type = Get_Button;
+    reply.button_id = idx;
+
+    Serial.print("BTN");
+    if (isShortPress == 1) {
+        Serial.print(" SHORT ");
+        reply.press_duration = 100;
+    } else {
+        Serial.print(" LONG ");
+        reply.press_duration = 255;
+    }
+    Serial.println(idx);
+
+    sendMessage((uint8_t *) &reply, sizeof(reply));
+}
+
 // When an encoded packet is received and decoded, it will be delivered here.
 // The `decoded_buffer` is a pointer to the decoded byte array. `data_size` is the number of
 // bytes in the `buffer`.
@@ -120,25 +157,23 @@ void onPacketReceived(const uint8_t *decoded_buffer, size_t data_size) {
             reply.type = Get_Version;
             reply.version = FIRMWARE_VERSION;
             sendMessage((uint8_t *) &reply, sizeof(reply));
-        } else {
+        } else
             bad_crc = true;
-        }
     } else if (decoded_buffer[0] == Set_Buzzer && data_size == sizeof(struct msg_set_buzzer)) {
         auto message = (struct msg_set_buzzer *) decoded_buffer;
         if (message->crc == calc_crc) {
-            // valid set_buzzer request
-//            Buzzer_set(message->repeat, message->on_time, message->off_time);
-        }
+            Serial.println("Set_Buzzer");
+            buzzer.blink(message->on_time, message->off_time, message->repeat).start();
+        } else
+            bad_crc = true;
     } else if (decoded_buffer[0] == Set_LEDs && data_size == sizeof(struct msg_set_leds)) {
         auto message = (struct msg_set_leds *) decoded_buffer;
         if (message->crc == calc_crc) {
-            // valid set_leds request
-            printf("Got valid setled call\n");
-//            LED_activity = message->leds;
-//            LEDs_refresh(pio_Block1, sm_LEDmux);
-        } else {
-            printf("Got setled call with crc error\n");
-        }
+            Serial.println("Set_Leds");
+            parseLedsBinaryStatus(std::bitset<LEDS.size() * 3>(message->leds));
+        } else
+            bad_crc = true;
+
     } else {
         Serial.println("Invalid command code");
     }
@@ -152,24 +187,24 @@ void setup() {
     shiftRegister.write(LEDS.to_ulong(), LEDS.size());
 
     // Setting huge debounce to mitigate potential FIFO spamming with button presses
-    SW[0].begin(BM_OUT_SA1, BM_IN_SE1).debounce(500);
-    SW[1].begin(BM_OUT_SA1, BM_IN_SE2).debounce(500);
-    SW[2].begin(BM_OUT_SA1, BM_IN_SE3).debounce(500);
-    SW[3].begin(BM_OUT_SA1, BM_IN_SE4).debounce(500);
-    SW[4].begin(BM_OUT_SA2, BM_IN_SE1).debounce(500);
-    SW[5].begin(BM_OUT_SA2, BM_IN_SE2).debounce(500);
-    SW[6].begin(BM_OUT_SA2, BM_IN_SE3).debounce(500);
-    SW[7].begin(BM_OUT_SA2, BM_IN_SE4).debounce(500);
-    SW[8].begin(BM_OUT_SA3, BM_IN_SE1).debounce(500);
-    SW[9].begin(BM_OUT_SA3, BM_IN_SE2).debounce(500);
-    SW[10].begin(BM_OUT_SA3, BM_IN_SE3).debounce(500);
-    SW[11].begin(BM_OUT_SA3, BM_IN_SE4).debounce(500);
-    SW[12].begin(BM_OUT_SA4, BM_IN_SE1).debounce(500);
-    SW[13].begin(BM_OUT_SA4, BM_IN_SE2).debounce(500);
+    SW[0].begin(BM_OUT_SA1, BM_IN_SE1).debounce(50).longPress(2, 500);
+    SW[1].begin(BM_OUT_SA1, BM_IN_SE2).debounce(50).longPress(2, 500);
+    SW[2].begin(BM_OUT_SA1, BM_IN_SE3).debounce(50).longPress(2, 500);
+    SW[3].begin(BM_OUT_SA1, BM_IN_SE4).debounce(50).longPress(2, 500);
+    SW[4].begin(BM_OUT_SA2, BM_IN_SE1).debounce(50).longPress(2, 500);
+    SW[5].begin(BM_OUT_SA2, BM_IN_SE2).debounce(50).longPress(2, 500);
+    SW[6].begin(BM_OUT_SA2, BM_IN_SE3).debounce(50).longPress(2, 500);
+    SW[7].begin(BM_OUT_SA2, BM_IN_SE4).debounce(50).longPress(2, 500);
+    SW[8].begin(BM_OUT_SA3, BM_IN_SE1).debounce(50).longPress(2, 500);
+    SW[9].begin(BM_OUT_SA3, BM_IN_SE2).debounce(50).longPress(2, 500);
+    SW[10].begin(BM_OUT_SA3, BM_IN_SE3).debounce(50).longPress(2, 500);
+    SW[11].begin(BM_OUT_SA3, BM_IN_SE4).debounce(50).longPress(2, 500);
+    SW[12].begin(BM_OUT_SA4, BM_IN_SE1).debounce(50).longPress(2, 500);
+    SW[13].begin(BM_OUT_SA4, BM_IN_SE2).debounce(50).longPress(2, 500);
 
     buzzer.begin(BUZZER_OUT);
     builtin_led.begin(LED_BUILTIN);
-    for (int i = 0; i < 18; ++i) {
+    for (size_t i = 0; i < LEDS.size(); ++i) {
         leds[i].begin();
 
         // Virtual led on/off codes does nothing, instead we update shift register bytes in callback
@@ -177,20 +212,27 @@ void setup() {
         leds[i].onEventOff(virtualLedCallback, i);
     }
 
+    for (int i = 0; i < 13; ++i) {
+        SW[i].onPress([](int idx, int v, int up) {
+            if (v > 0)
+                reportButtonPress(idx, v);
+        }, i);
+    }
+
     Serial2.begin(115200);
     myPacketSerial.setStream(&Serial2);
     myPacketSerial.setPacketHandler(&onPacketReceived);
 
 #ifdef TEST_MODE
-    buzzer.blink(100, 2000).start();        // Once in 5s not to irritate people much
+    buzzer.blink(200, 5000).start();        // Once in 5s not to irritate people much
 
-    for (int i = 0; i < 18; ++i) {
+    for (size_t i = 0; i < LEDS.size(); ++i) {
         leds[i].begin().blink(50 * (i + 1), 50 * (i + 1)).start();
     };
     for (int i = 0; i < 13; ++i) {
         // Switches SW1-SW13 toggle corresponding leds
         SW[i].onPress([](int idx, int v, int up) {
-            Serial.print("BTN ");
+            Serial.print("TEST BTN ");
             Serial.println(idx);
             builtin_led.toggle();
             leds[idx].toggle();
@@ -219,6 +261,6 @@ void loop() {
     if (myPacketSerial.overflow()) {
         // Send an alert via a pin (e.g. make an overflow LED) or return a
         // user-defined packet to the sender.
-        Serial.println("Overflow!")
+        Serial.println("Overflow!");
     }
 }
