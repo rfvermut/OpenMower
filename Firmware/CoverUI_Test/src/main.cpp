@@ -20,6 +20,8 @@
 #define BM_IN_SE3 p21
 #define BM_IN_SE4 p22
 
+#define BUZZER_OUT p26
+
 #define UNUSED_PIN p14
 
 mbed::DigitalOut PIN_RCK = mbed::DigitalOut(p11);
@@ -39,6 +41,7 @@ ShiftRegister shiftRegister = ShiftRegister(
 std::bitset<18> LEDS;
 
 Atm_led builtin_led;
+Atm_led buzzer;
 Atm_button_matrix SW[14];
 Atm_virtual_led leds[18];
 
@@ -51,6 +54,7 @@ constexpr byte LED_INDEX_TO_BIT_POSITION[] = {1, 12, 11, 10, 0, 13, 14, 5, 4,
 #define FIRMWARE_VERSION 200
 FastCRC16 CRC16;
 PacketSerial_<COBS, 0, 1024> myPacketSerial;
+UART Serial2(p4, p5);
 
 void virtualLedCallback(int idx, int isPressed, int _ignored) {
     LEDS.set(LED_INDEX_TO_BIT_POSITION[idx], isPressed);
@@ -104,9 +108,11 @@ void onPacketReceived(const uint8_t *decoded_buffer, size_t data_size) {
     if (data_size < 3)
         return;
 
-    uint16_t calc_crc = CRC16.ccitt(decoded_buffer, data_size - 2);
+    auto calc_crc = CRC16.ccitt(decoded_buffer, data_size - 2);
+    auto bad_crc = false;
 
     if (decoded_buffer[0] == Get_Version && data_size == sizeof(struct msg_get_version)) {
+        Serial.println("Get_Version");
         auto message = (struct msg_get_version *) decoded_buffer;
         if (message->crc == calc_crc) {
             // valid get_version request, send reply
@@ -114,6 +120,8 @@ void onPacketReceived(const uint8_t *decoded_buffer, size_t data_size) {
             reply.type = Get_Version;
             reply.version = FIRMWARE_VERSION;
             sendMessage((uint8_t *) &reply, sizeof(reply));
+        } else {
+            bad_crc = true;
         }
     } else if (decoded_buffer[0] == Set_Buzzer && data_size == sizeof(struct msg_set_buzzer)) {
         auto message = (struct msg_set_buzzer *) decoded_buffer;
@@ -132,8 +140,11 @@ void onPacketReceived(const uint8_t *decoded_buffer, size_t data_size) {
             printf("Got setled call with crc error\n");
         }
     } else {
-        printf("some invalid packet\n");
+        Serial.println("Invalid command code");
     }
+
+    if (bad_crc)
+        Serial.println("Invalid CRC");
 }
 
 void setup() {
@@ -156,6 +167,7 @@ void setup() {
     SW[12].begin(BM_OUT_SA4, BM_IN_SE1).debounce(500);
     SW[13].begin(BM_OUT_SA4, BM_IN_SE2).debounce(500);
 
+    buzzer.begin(BUZZER_OUT);
     builtin_led.begin(LED_BUILTIN);
     for (int i = 0; i < 18; ++i) {
         leds[i].begin();
@@ -165,10 +177,13 @@ void setup() {
         leds[i].onEventOff(virtualLedCallback, i);
     }
 
-    myPacketSerial.begin(115200);
+    Serial2.begin(115200);
+    myPacketSerial.setStream(&Serial2);
     myPacketSerial.setPacketHandler(&onPacketReceived);
 
 #ifdef TEST_MODE
+    buzzer.blink(100, 2000).start();        // Once in 5s not to irritate people much
+
     for (int i = 0; i < 18; ++i) {
         leds[i].begin().blink(50 * (i + 1), 50 * (i + 1)).start();
     };
@@ -204,5 +219,6 @@ void loop() {
     if (myPacketSerial.overflow()) {
         // Send an alert via a pin (e.g. make an overflow LED) or return a
         // user-defined packet to the sender.
+        Serial.println("Overflow!")
     }
 }
