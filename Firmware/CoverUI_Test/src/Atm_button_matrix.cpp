@@ -28,11 +28,13 @@ int Atm_button_matrix::event(int id) {
             return timer_auto.expired(this);
         case EVT_PRESS:
             digitalWrite(power_source_pin, HIGH);
+            delay(1);
             state = digitalRead(pin);
             digitalWrite(power_source_pin, LOW);
             return state;
         case EVT_RELEASE:
             digitalWrite(power_source_pin, HIGH);
+            delay(1);
             state = digitalRead(pin);
             digitalWrite(power_source_pin, LOW);
             return !state;
