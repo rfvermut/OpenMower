@@ -82,7 +82,7 @@ void parseLedsBinaryStatus(std::bitset<LEDS.size() * 3> ledsMessage) {
         if (ledsMessage[i * 3 + 2] == 0) {
             leds[mapped_led_index].off();
         } else if (ledsMessage[i * 3 + 1] == 0) {
-            leds[mapped_led_index].blink(200, 1000).start();        // Slow
+            leds[mapped_led_index].blink(200, 1000).start();       // Slow
         } else if (ledsMessage[i * 3] == 0) {
             leds[mapped_led_index].blink(200, 200).start();        // Fast
         } else {
@@ -126,11 +126,13 @@ void reportButtonPress(int idx, int duration) {
     reply.type = Get_Button;
     // Button ids are 1-indexed
     reply.button_id = idx + 1;
-
-    Serial.print("BTN");
     // ROS expects 0 = single, 1 = long, 2 = very long
     reply.press_duration = duration - 1;
-    Serial.println(idx);
+
+    Serial.print("BTN ");
+    Serial.print(reply.button_id);
+    Serial.print(" length ");
+    Serial.print(reply.press_duration);
 
     sendMessage((uint8_t *) &reply, sizeof(reply));
 }
@@ -210,12 +212,15 @@ void setup() {
         leds[i].onEventOff(virtualLedCallback, i);
     }
 
+#ifndef TEST_MODE
     for (int i = 0; i < 13; ++i) {
         SW[i].onPress([](int idx, int v, int up) {
+            // v is 0 for release, 1-2-3 for press length
             if (v > 0)
                 reportButtonPress(idx, v);
         }, i);
     }
+#endif
 
     Serial2.begin(115200);
     myPacketSerial.setStream(&Serial2);

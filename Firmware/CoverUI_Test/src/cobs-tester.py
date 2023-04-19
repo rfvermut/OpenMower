@@ -81,18 +81,19 @@ class TestCoverUI:
         self.crc_cobs_send(serial_comm, bytearray([self.PACKET_LEDS, 0xCC]) +
                            0xFFFFFFFFFFFFFF.to_bytes(8, "little"))
 
-    def test_first_led_slow_second_fast(self, serial_comm):
+    def test_last_led_fast_second_to_last_slow(self, serial_comm):
         self.crc_cobs_send(serial_comm, bytearray([self.PACKET_LEDS, 0xCC])
                            + 0b101110.to_bytes(8, "little"))
 
-    def test_wait_for_button14_press(self, serial_comm):
+    def test_wait_for_button01_press(self, serial_comm):
         got_button_press = False
         for i in range(1000):
             try:
                 button_reply = self.read_cobs_crc(serial_comm)
                 assert button_reply[0] == self.PACKET_BTN
-                assert button_reply[2] == 200
+                assert button_reply[1] == 1
                 got_button_press = True
+                break
             except RuntimeError:
                 pass
 
