@@ -77,14 +77,16 @@ void parseLedsBinaryStatus(std::bitset<LEDS.size() * 3> ledsMessage) {
         Serial.print(ledsMessage[i * 3 + 1]);
         Serial.println(ledsMessage[i * 3 + 2]);
 #endif
+        // LED order is reversed
+        auto mapped_led_index = LEDS.size() - 1 - i;
         if (ledsMessage[i * 3 + 2] == 0) {
-            leds[i].off();
+            leds[mapped_led_index].off();
         } else if (ledsMessage[i * 3 + 1] == 0) {
-            leds[i].blink(200, 1000).start();        // Slow
+            leds[mapped_led_index].blink(200, 1000).start();        // Slow
         } else if (ledsMessage[i * 3] == 0) {
-            leds[i].blink(200, 200).start();        // Fast
+            leds[mapped_led_index].blink(200, 200).start();        // Fast
         } else {
-            leds[i].on();
+            leds[mapped_led_index].on();
         }
     }
 }
@@ -116,22 +118,18 @@ void sendMessage(uint8_t *message, size_t size) {
     myPacketSerial.send(message, size);
 }
 
-void reportButtonPress(int idx, int isShortPress) {
+void reportButtonPress(int idx, int duration) {
     // Mild debug to show that we sense button presses
     builtin_led.toggle();
 
     struct msg_event_button reply{};
     reply.type = Get_Button;
-    reply.button_id = idx;
+    // Button ids are 1-indexed
+    reply.button_id = idx + 1;
 
     Serial.print("BTN");
-    if (isShortPress == 1) {
-        Serial.print(" SHORT ");
-        reply.press_duration = 100;
-    } else {
-        Serial.print(" LONG ");
-        reply.press_duration = 255;
-    }
+    // ROS expects 0 = single, 1 = long, 2 = very long
+    reply.press_duration = duration - 1;
     Serial.println(idx);
 
     sendMessage((uint8_t *) &reply, sizeof(reply));
@@ -187,20 +185,20 @@ void setup() {
     shiftRegister.write(LEDS.to_ulong(), LEDS.size());
 
     // Setting huge debounce to mitigate potential FIFO spamming with button presses
-    SW[0].begin(BM_OUT_SA1, BM_IN_SE1).debounce(50).longPress(2, 500);
-    SW[1].begin(BM_OUT_SA1, BM_IN_SE2).debounce(50).longPress(2, 500);
-    SW[2].begin(BM_OUT_SA1, BM_IN_SE3).debounce(50).longPress(2, 500);
-    SW[3].begin(BM_OUT_SA1, BM_IN_SE4).debounce(50).longPress(2, 500);
-    SW[4].begin(BM_OUT_SA2, BM_IN_SE1).debounce(50).longPress(2, 500);
-    SW[5].begin(BM_OUT_SA2, BM_IN_SE2).debounce(50).longPress(2, 500);
-    SW[6].begin(BM_OUT_SA2, BM_IN_SE3).debounce(50).longPress(2, 500);
-    SW[7].begin(BM_OUT_SA2, BM_IN_SE4).debounce(50).longPress(2, 500);
-    SW[8].begin(BM_OUT_SA3, BM_IN_SE1).debounce(50).longPress(2, 500);
-    SW[9].begin(BM_OUT_SA3, BM_IN_SE2).debounce(50).longPress(2, 500);
-    SW[10].begin(BM_OUT_SA3, BM_IN_SE3).debounce(50).longPress(2, 500);
-    SW[11].begin(BM_OUT_SA3, BM_IN_SE4).debounce(50).longPress(2, 500);
-    SW[12].begin(BM_OUT_SA4, BM_IN_SE1).debounce(50).longPress(2, 500);
-    SW[13].begin(BM_OUT_SA4, BM_IN_SE2).debounce(50).longPress(2, 500);
+    SW[0].begin(BM_OUT_SA1, BM_IN_SE1).debounce(50).longPress(3, 300);
+    SW[1].begin(BM_OUT_SA1, BM_IN_SE2).debounce(50).longPress(3, 300);
+    SW[2].begin(BM_OUT_SA1, BM_IN_SE3).debounce(50).longPress(3, 300);
+    SW[3].begin(BM_OUT_SA1, BM_IN_SE4).debounce(50).longPress(3, 300);
+    SW[4].begin(BM_OUT_SA2, BM_IN_SE1).debounce(50).longPress(3, 300);
+    SW[5].begin(BM_OUT_SA2, BM_IN_SE2).debounce(50).longPress(3, 300);
+    SW[6].begin(BM_OUT_SA2, BM_IN_SE3).debounce(50).longPress(3, 300);
+    SW[7].begin(BM_OUT_SA2, BM_IN_SE4).debounce(50).longPress(3, 300);
+    SW[8].begin(BM_OUT_SA3, BM_IN_SE1).debounce(50).longPress(3, 300);
+    SW[9].begin(BM_OUT_SA3, BM_IN_SE2).debounce(50).longPress(3, 300);
+    SW[10].begin(BM_OUT_SA3, BM_IN_SE3).debounce(50).longPress(3, 300);
+    SW[11].begin(BM_OUT_SA3, BM_IN_SE4).debounce(50).longPress(3, 300);
+    SW[12].begin(BM_OUT_SA4, BM_IN_SE1).debounce(50).longPress(3, 300);
+    SW[13].begin(BM_OUT_SA4, BM_IN_SE2).debounce(50).longPress(3, 300);
 
     buzzer.begin(BUZZER_OUT);
     builtin_led.begin(LED_BUILTIN);
@@ -237,8 +235,10 @@ void setup() {
             builtin_led.toggle();
             leds[idx].toggle();
         }, i).trace(Serial);
-        // Switch SW14 operates the rest of leds
-        SW[13].onPress([](int idx, int v, int up) {
+    }
+    // Switch SW14 operates the rest of leds
+    SW[13].onPress([](int idx, int v, int up) {
+        if(v == 3) {
             Serial.print("BTN ");
             Serial.println(idx);
             builtin_led.toggle();
@@ -247,8 +247,8 @@ void setup() {
             leds[15].toggle();
             leds[16].toggle();
             leds[17].toggle();
-        }, i).trace(Serial);
-    }
+        }
+    }, 13).trace(Serial);
 #endif
 
 }
